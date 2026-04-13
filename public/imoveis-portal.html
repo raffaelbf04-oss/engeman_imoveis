@@ -672,6 +672,14 @@ const ESTADOS = [
   {v:'SP',l:'São Paulo'},{v:'SE',l:'Sergipe'},{v:'TO',l:'Tocantins'}
 ];
 
+const MOCK_PROPERTIES = [
+  {id: 9001, name: 'Casa com varanda e 2 quartos.', city: 'Recife', state: 'PE', value: 1425, bedrooms: 2, area: 40, type: 'RESIDENCIAL', address: 'Rua Vereador Sérgio Xavier, San Martin', active: true, imageUrls: 'https://images.unsplash.com/photo-1568605114967-8130f3a36994?auto=format&fit=crop&q=80&w=400&h=300'},
+  {id: 9002, name: 'Apartamento com 1 quarto para alugar. Ótimo aluguel para sua nova morada.', city: 'Recife', state: 'PE', value: 750, bedrooms: 1, area: 45, type: 'RESIDENCIAL', address: 'Rua Torres Homem, Várzea', active: true, imageUrls: 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?auto=format&fit=crop&q=80&w=400&h=300'},
+  {id: 9003, name: 'Aluguel de apartamento mobiliado, de 46 m² com 1 quarto e 1 banheiro em Boa Vista.', city: 'Recife', state: 'PE', value: 2600, bedrooms: 1, area: 46, type: 'RESIDENCIAL', address: 'Rua do Aragão, Boa Vista', active: true, imageUrls: 'https://images.unsplash.com/photo-1502672260266-1c1de2d93688?auto=format&fit=crop&q=80&w=400&h=300'},
+  {id: 9004, name: 'Lindo flat iluminado em andar alto', city: 'Recife', state: 'PE', value: 2100, bedrooms: 1, area: 30, type: 'RESIDENCIAL', address: 'Boa Viagem', active: true, imageUrls: 'https://images.unsplash.com/photo-1493809842364-78817add7ffb?auto=format&fit=crop&q=80&w=400&h=300'},
+  {id: 9005, name: 'Casa espaçosa com quintal amplo', city: 'Recife', state: 'PE', value: 3500, bedrooms: 3, area: 120, type: 'RESIDENCIAL', address: 'Casa Amarela', active: true, imageUrls: 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&q=80&w=400&h=300'}
+];
+
 // ─── LOCAL AUTH STORE ─────────────────────────────────────────────────────────
 const LOCAL_USERS = [
   {id:1, name:'Admin Engeman', email:'admin@gmail.com', password:'adminadmin', role:'ADMIN'}
@@ -994,15 +1002,8 @@ async function loadProperties(){
     }
     renderPagination();
   }catch(e){
-    const mockups = [
-      {id: 9001, name: 'Casa com varanda e 2 quartos.', city: 'Recife', state: 'PE', value: 1425, bedrooms: 2, area: 40, type: 'RESIDENCIAL', address: 'Rua Vereador Sérgio Xavier, San Martin', active: true, imageUrls: 'https://images.unsplash.com/photo-1568605114967-8130f3a36994?auto=format&fit=crop&q=80&w=400&h=300'},
-      {id: 9002, name: 'Apartamento com 1 quarto para alugar. Ótimo aluguel para sua nova morada.', city: 'Recife', state: 'PE', value: 750, bedrooms: 1, area: 45, type: 'RESIDENCIAL', address: 'Rua Torres Homem, Várzea', active: true, imageUrls: 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?auto=format&fit=crop&q=80&w=400&h=300'},
-      {id: 9003, name: 'Aluguel de apartamento mobiliado, de 46 m² com 1 quarto e 1 banheiro em Boa Vista.', city: 'Recife', state: 'PE', value: 2600, bedrooms: 1, area: 46, type: 'RESIDENCIAL', address: 'Rua do Aragão, Boa Vista', active: true, imageUrls: 'https://images.unsplash.com/photo-1502672260266-1c1de2d93688?auto=format&fit=crop&q=80&w=400&h=300'},
-      {id: 9004, name: 'Lindo flat iluminado em andar alto', city: 'Recife', state: 'PE', value: 2100, bedrooms: 1, area: 30, type: 'RESIDENCIAL', address: 'Boa Viagem', active: true, imageUrls: 'https://images.unsplash.com/photo-1493809842364-78817add7ffb?auto=format&fit=crop&q=80&w=400&h=300'},
-      {id: 9005, name: 'Casa espaçosa com quintal amplo', city: 'Recife', state: 'PE', value: 3500, bedrooms: 3, area: 120, type: 'RESIDENCIAL', address: 'Casa Amarela', active: true, imageUrls: 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&q=80&w=400&h=300'}
-    ];
     cnt.textContent = `5 imóveis em Recife, PE (Modo Demonstração)`;
-    grid.innerHTML = mockups.map(p=>propertyCard(p)).join('');
+    grid.innerHTML = MOCK_PROPERTIES.map(p=>propertyCard(p)).join('');
   }
 }
 
@@ -1144,7 +1145,9 @@ async function loadFavorites(){
   try{
     const r=await api('/api/user/favorites');
     if(r.ok){const data=await r.json();favorites=new Set((data.content||data||[]).map(p=>p.id));}
-  }catch(e){}
+  }catch(e){
+    if(currentUser) favorites=new Set(JSON.parse(localStorage.getItem('eng_local_favs_'+currentUser.id)||'[]'));
+  }
 }
 
 async function toggleFav(id,currently,isDetail=false){
@@ -1159,11 +1162,28 @@ async function toggleFav(id,currently,isDetail=false){
       favorites.add(id);
       toast('Adicionado aos favoritos!','success');
     }
-    if(isDetail){
-      const btn=document.getElementById('detailFavBtn');
-      if(btn){btn.className=`fav-btn ${favorites.has(id)?'active':''}`;btn.textContent=`♥ ${favorites.has(id)?'Remover dos favoritos':'Adicionar aos favoritos'}`;}
-    }else{loadProperties();}
-  }catch(e){toast('Erro ao atualizar favoritos','error');}
+    if(currentUser) localStorage.setItem('eng_local_favs_'+currentUser.id, JSON.stringify([...favorites]));
+  }catch(e){
+    if(currently) {
+       favorites.delete(id);
+       toast('Removido dos favoritos (Local)');
+    } else {
+       favorites.add(id);
+       toast('Adicionado aos favoritos! (Local)','success');
+    }
+    if(currentUser) localStorage.setItem('eng_local_favs_'+currentUser.id, JSON.stringify([...favorites]));
+  }
+  
+  if(isDetail){
+    const btn=document.getElementById('detailFavBtn');
+    if(btn){btn.className=`fav-btn ${favorites.has(id)?'active':''}`;btn.textContent=`♥ ${favorites.has(id)?'Remover dos favoritos':'Adicionar aos favoritos'}`;}
+  }else{
+    if(document.getElementById('pageAccount').classList.contains('active') && document.getElementById('accountTabFavorites').style.display==='block'){
+      loadFavoritesTab(); // Refresh tab directly
+    }else{
+      loadProperties();
+    }
+  }
 }
 
 // ─── ACCOUNT ─────────────────────────────────────────────────────────────────
@@ -1215,13 +1235,19 @@ async function loadFavoritesTab(){
   el.innerHTML=`<div class="loading"><div class="spinner"></div></div>`;
   try{
     const r=await api('/api/user/favorites');
-    if(!r.ok){el.innerHTML='<p>Erro ao carregar.</p>';return;}
+    if(!r.ok){throw new Error('API Offline');}
     const data=await r.json();
     const list=data.content||data||[];
     if(list.length===0){el.innerHTML=`<div class="empty-state"><div class="icon">♥</div><h3>Nenhum favorito ainda</h3><p>Explore imóveis e favorite os que gostar</p><button class="btn btn-primary" style="margin-top:1rem" onclick="goHome()">Explorar imóveis</button></div>`;return;}
     favorites=new Set(list.map(p=>p.id));
     el.innerHTML=`<div class="property-grid">${list.map(p=>propertyCard(p)).join('')}</div>`;
-  }catch(e){el.innerHTML='<p>Erro ao carregar.</p>';}
+  }catch(e){
+    await loadFavorites(); // reload internal Set
+    const localIds = [...favorites];
+    const list = MOCK_PROPERTIES.filter(p => localIds.includes(p.id));
+    if(list.length===0){el.innerHTML=`<div class="empty-state"><div class="icon">♥</div><h3>Nenhum favorito ainda</h3><p>Explore imóveis e favorite os que gostar (Modo Demo)</p><button class="btn btn-primary" style="margin-top:1rem" onclick="goHome()">Explorar imóveis</button></div>`;return;}
+    el.innerHTML=`<div class="property-grid split-left" style="background:transparent; padding:0; overflow:visible">${list.map(p=>propertyCard(p)).join('')}</div>`;
+  }
 }
 
 // ─── MANAGE ──────────────────────────────────────────────────────────────────
