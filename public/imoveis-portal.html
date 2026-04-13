@@ -637,9 +637,13 @@ nav{background:var(--dark);padding:0 2rem;display:flex;align-items:center;justif
       </div>
     </div>
     <div class="form-group">
-      <label class="form-label">URLs das imagens *</label>
+      <label class="form-label">URLs das imagens (Opcional se enviar arquivo)</label>
       <input class="form-input" type="text" id="mImageUrls" placeholder="https://img.com/1.jpg,https://img.com/2.jpg"/>
       <p class="form-hint">Separe múltiplas URLs por vírgula</p>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Ou selecione imagens do seu PC</label>
+      <input class="form-input" type="file" id="mImageFiles" accept="image/*" multiple/>
     </div>
     <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:1rem">
       <button class="btn btn-secondary" onclick="closePropertyModal()">Cancelar</button>
@@ -1258,9 +1262,12 @@ async function loadManage(){
     const r=await api('/api/property/getUserProperties');
     if(!r.ok){el.innerHTML='<p>Erro ao carregar.</p>';return;}
     const list=await r.json();
-    if(!list.length){el.innerHTML=`<div class="empty-state"><div class="icon">🏠</div><h3>Nenhuma propriedade cadastrada</h3><p>Clique em "Nova Propriedade" para começar</p></div>`;return;}
-    el.innerHTML=list.map(p=>manageCard(p)).join('');
-  }catch(e){el.innerHTML='<p>Erro ao carregar.</p>';}
+  }catch(e){
+    const localProps = currentUser ? JSON.parse(localStorage.getItem('eng_local_props_'+currentUser.id)||'[]') : [];
+    const demoProp = {...MOCK_PROPERTIES[0], active: true};
+    const combined = [...localProps, demoProp];
+    el.innerHTML = combined.map(p=>manageCard(p)).join('');
+  }
 }
 
 function manageCard(p){
@@ -1323,11 +1330,37 @@ async function openPropertyModal(id=null){
   }else{
     fields.forEach(f=>document.getElementById(f).value='');
     document.getElementById('mType').value='RESIDENCIAL';
+    if(document.getElementById('mImageFiles')) document.getElementById('mImageFiles').value='';
   }
   document.getElementById('propertyModal').style.display='flex';
 }
 
 function closePropertyModal(){document.getElementById('propertyModal').style.display='none';editingPropertyId=null;}
+
+function resizeImage(file, maxSize=800) {
+  return new Promise((resolve) => {
+    if(!file.type.match(/image.*/)){ resolve(null); return; }
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width, h = img.height;
+        if(w > maxSize || h > maxSize) {
+          if(w > h){ h=Math.floor(h*maxSize/w); w=maxSize; }
+          else{ w=Math.floor(w*maxSize/h); h=maxSize; }
+        }
+        const cvs = document.createElement('canvas');
+        cvs.width=w; cvs.height=h;
+        cvs.getContext('2d').drawImage(img,0,0,w,h);
+        resolve(cvs.toDataURL('image/jpeg',0.75));
+      };
+      img.onerror = () => resolve(e.target.result);
+      img.src = e.target.result;
+    };
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  });
+}
 
 async function saveProperty(){
   const name=document.getElementById('mName').value.trim();
@@ -1347,17 +1380,29 @@ async function saveProperty(){
   if(!area||area<=0){toast('Área inválida','error');return;}
   if(!bedrooms||bedrooms<=0){toast('Quartos inválido','error');return;}
   if(!address||!city||!state){toast('Endereço completo obrigatório','error');return;}
-  if(!imageUrls){toast('Informe ao menos uma URL de imagem','error');return;}
+  const fileInput=document.getElementById('mImageFiles');
+  
+  let finalUrls = imageUrls ? imageUrls.split(',').map(s=>s.trim()).filter(Boolean) : [];
+  if(fileInput && fileInput.files.length > 0) {
+    const promises = Array.from(fileInput.files).map(file => resizeImage(file));
+    let base64Images = await Promise.all(promises);
+    base64Images = base64Images.filter(Boolean);
+    finalUrls = finalUrls.concat(base64Images);
+  }
 
-  const body={name,description,type,value,area,bedrooms,address,city,state,imageUrls};
+  if(finalUrls.length===0){toast('Informe ao menos uma URL de imagem ou selecione um arquivo válido','error');return;}
+
+  const body={name,description,type,value,area,bedrooms,address,city,state,imageUrls: finalUrls.join(',')};
   const btn=document.getElementById('modalSaveBtn');
   btn.disabled=true;btn.textContent='Salvando...';
   try{
     let r;
-    if(editingPropertyId){
+    if(editingPropertyId && typeof editingPropertyId === 'number'){
       r=await api(`/api/property/${editingPropertyId}`,{method:'PUT',body:JSON.stringify(body)});
-    }else{
+    }else if(!editingPropertyId || typeof editingPropertyId === 'number'){
       r=await api('/api/property',{method:'POST',body:JSON.stringify(body)});
+    } else {
+      throw new Error('Local update fallback'); // local ID
     }
     if(r.ok||r.status===201){
       toast(editingPropertyId?'Imóvel atualizado!':'Imóvel criado!','success');
@@ -1365,7 +1410,27 @@ async function saveProperty(){
     }else{
       const e=await r.text();toast('Erro: '+e,'error');
     }
-  }catch(e){toast('Erro ao conectar','error');}
+  }catch(e){
+    if(currentUser) {
+      let localProps = JSON.parse(localStorage.getItem('eng_local_props_'+currentUser.id)||'[]');
+      let action = 'criado';
+      if(editingPropertyId){
+        const idx = localProps.findIndex(p=>p.id===editingPropertyId);
+        if(idx>=0) localProps[idx] = {...localProps[idx], ...body, id:editingPropertyId, active: true};
+        action = 'atualizado';
+      } else {
+        body.id = 'L'+Date.now();
+        body.active = true;
+        localProps.unshift(body);
+      }
+      localStorage.setItem('eng_local_props_'+currentUser.id, JSON.stringify(localProps));
+      toast(`Imóvel ${action} no modo demonstração!`, 'success');
+      closePropertyModal();
+      loadManage();
+    } else {
+      toast('Erro ao conectar. Faça login para salvar localmente.', 'error');
+    }
+  }
   finally{btn.disabled=false;btn.textContent=editingPropertyId?'Salvar alterações':'Criar propriedade';}
 }
 
