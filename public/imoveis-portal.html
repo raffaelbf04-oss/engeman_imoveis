@@ -986,6 +986,12 @@ function logout(){
   updateNav();showPage('pageLanding');toast('Você saiu da conta');
 }
 
+function parseImgs(str){
+  if(!str) return [];
+  if(str.includes('||')) return str.split('||').filter(Boolean);
+  return str.split(',').filter(Boolean);
+}
+
 // ─── PROPERTIES ──────────────────────────────────────────────────────────────
 async function loadProperties(){
   const grid=document.getElementById('propertyGrid');
@@ -1013,11 +1019,12 @@ async function loadProperties(){
 }
 
 function propertyCard(p){
-  const imgs=p.imageUrls?p.imageUrls.split(',').filter(Boolean):[];
+  const imgs=parseImgs(p.imageUrls);
   const img=imgs[0]?`<img class="card-img" src="${imgs[0]}" alt="${p.name}" onerror="this.parentNode.innerHTML='<div class=\\'card-img-placeholder\\'>🏠</div>'">`:`<div class="card-img-placeholder">🏠</div>`;
   const faved=favorites.has(p.id);
-  const favBtn=token?`<button class="fav-btn ${faved?'active':''}" onclick="event.stopPropagation();toggleFav(${p.id},${faved})" title="${faved?'Remover favorito':'Favoritar'}">♥ ${faved?'Favoritado':'Favoritar'}</button>`:'';
-  return`<div class="property-card" onclick="goDetail(${p.id})">
+  const safeId = typeof p.id === 'string' ? `'${p.id}'` : p.id;
+  const favBtn=token?`<button class="fav-btn ${faved?'active':''}" onclick="event.stopPropagation();toggleFav(${safeId},${faved})" title="${faved?'Remover favorito':'Favoritar'}">♥ ${faved?'Favoritado':'Favoritar'}</button>`:'';
+  return`<div class="property-card" onclick="goDetail(${safeId})">
     ${img}
     <div class="card-body">
       <span class="card-type">${p.type}</span>
@@ -1088,6 +1095,12 @@ function applyHeroSearch(){currentPage=0;loadProperties();}
 async function goDetail(id){
   showPage('pageDetail');
   document.getElementById('detailContent').innerHTML=`<div class="loading"><div class="spinner"></div></div>`;
+  if(typeof id === 'string' && id.startsWith('L')){
+     if(!currentUser){ goHome(); return; }
+     const localProps = JSON.parse(localStorage.getItem('eng_local_props_'+currentUser.id)||'[]');
+     const p = localProps.find(x=>x.id===id);
+     if(p){ await loadFavorites(); renderDetail(p); return; }
+  }
   try{
     const r=await api(`/api/property/${id}`);
     if(!r.ok){toast('Imóvel não encontrado','error');goHome();return;}
@@ -1098,7 +1111,7 @@ async function goDetail(id){
 }
 
 function renderDetail(p){
-  const imgs=p.imageUrls?p.imageUrls.split(',').filter(Boolean):[];
+  const imgs=parseImgs(p.imageUrls);
   const faved=favorites.has(p.id);
   let gallery='';
   if(imgs.length>0){
@@ -1109,7 +1122,8 @@ function renderDetail(p){
   }else{
     gallery=`<div style="height:220px;background:var(--light);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;font-size:3rem;margin-bottom:2rem">🏠</div>`;
   }
-  const favBtn=token?`<button class="fav-btn ${faved?'active':''}" id="detailFavBtn" onclick="toggleFav(${p.id},${faved},true)">♥ ${faved?'Remover dos favoritos':'Adicionar aos favoritos'}</button>`:'';
+  const safeId = typeof p.id === 'string' ? `'${p.id}'` : p.id;
+  const favBtn=token?`<button class="fav-btn ${faved?'active':''}" id="detailFavBtn" onclick="toggleFav(${safeId},${faved},true)">♥ ${faved?'Remover dos favoritos':'Adicionar aos favoritos'}</button>`:'';
   document.getElementById('detailContent').innerHTML=`
     ${gallery}
     <div class="detail-grid">
@@ -1272,8 +1286,9 @@ async function loadManage(){
 }
 
 function manageCard(p){
-  const imgs=p.imageUrls?p.imageUrls.split(',').filter(Boolean):[];
+  const imgs=parseImgs(p.imageUrls);
   const imgEl=imgs[0]?`<img class="manage-card-img" src="${imgs[0]}" alt="${p.name}" onerror="this.style.background='var(--light)';this.style.display='block'"/>`:`<div class="manage-card-img" style="display:flex;align-items:center;justify-content:center;font-size:1.5rem;background:var(--light);">🏠</div>`;
+  const safeId = typeof p.id === 'string' ? `'${p.id}'` : p.id;
   return`<div class="manage-card">
     ${imgEl}
     <div class="manage-card-info">
@@ -1282,16 +1297,23 @@ function manageCard(p){
       <p style="margin-top:4px">${p.active?'<span class="badge-active">Ativo</span>':'<span class="badge-inactive">Inativo</span>'} <span style="font-size:12px;color:var(--text-muted)">${p.type} · ${p.bedrooms} qts · ${p.area}m²</span></p>
     </div>
     <div class="manage-card-actions">
-      <button class="btn btn-secondary btn-sm" onclick="goDetail(${p.id})">Ver</button>
-      <button class="btn btn-secondary btn-sm" onclick="openPropertyModal(${p.id})">Editar</button>
-      <button class="btn ${p.active?'btn-danger':'btn-success'} btn-sm" onclick="toggleStatus(${p.id})">${p.active?'Desativar':'Ativar'}</button>
-      <button class="btn btn-danger btn-sm" onclick="deleteProperty(${p.id})">Excluir</button>
+      <button class="btn btn-secondary btn-sm" onclick="goDetail(${safeId})">Ver</button>
+      <button class="btn btn-secondary btn-sm" onclick="openPropertyModal(${safeId})">Editar</button>
+      <button class="btn ${p.active?'btn-danger':'btn-success'} btn-sm" onclick="toggleStatus(${safeId})">${p.active?'Desativar':'Ativar'}</button>
+      <button class="btn btn-danger btn-sm" onclick="deleteProperty(${safeId})">Excluir</button>
     </div>
   </div>`;
 }
 
 async function toggleStatus(id){
   try{
+    if(typeof id === 'string' && id.startsWith('L')){
+      if(!currentUser) return;
+      let localProps = JSON.parse(localStorage.getItem('eng_local_props_'+currentUser.id)||'[]');
+      const prop = localProps.find(p=>p.id===id);
+      if(prop){ prop.active = !prop.active; localStorage.setItem('eng_local_props_'+currentUser.id, JSON.stringify(localProps)); toast('Status atualizado localmente!','success'); loadManage(); }
+      return;
+    }
     const r=await api(`/api/property/status/${id}`,{method:'PATCH'});
     if(r.ok){toast('Status atualizado!','success');loadManage();}
     else toast('Erro ao atualizar status','error');
@@ -1301,6 +1323,14 @@ async function toggleStatus(id){
 async function deleteProperty(id){
   if(!confirm('Tem certeza que deseja excluir este imóvel? Esta ação não pode ser desfeita.')) return;
   try{
+    if(typeof id === 'string' && id.startsWith('L')){
+      if(!currentUser) return;
+      let localProps = JSON.parse(localStorage.getItem('eng_local_props_'+currentUser.id)||'[]');
+      localProps = localProps.filter(p=>p.id!==id);
+      localStorage.setItem('eng_local_props_'+currentUser.id, JSON.stringify(localProps));
+      toast('Imóvel excluído localmente','success'); loadManage();
+      return;
+    }
     const r=await api(`/api/property/${id}`,{method:'DELETE'});
     if(r.status===204||r.ok){toast('Imóvel excluído','success');loadManage();}
     else toast('Erro ao excluir','error');
@@ -1314,20 +1344,37 @@ async function openPropertyModal(id=null){
   document.getElementById('modalSaveBtn').textContent=id?'Salvar alterações':'Criar propriedade';
   const fields=['mName','mDescription','mType','mValue','mArea','mBedrooms','mAddress','mCity','mState','mImageUrls'];
   if(id){
-    try{
-      const r=await api(`/api/property/${id}`);
-      const p=await r.json();
-      document.getElementById('mName').value=p.name||'';
-      document.getElementById('mDescription').value=p.description||'';
-      document.getElementById('mType').value=p.type||'RESIDENCIAL';
-      document.getElementById('mValue').value=p.value||'';
-      document.getElementById('mArea').value=p.area||'';
-      document.getElementById('mBedrooms').value=p.bedrooms||'';
-      document.getElementById('mAddress').value=p.address||'';
-      document.getElementById('mCity').value=p.city||'';
-      document.getElementById('mState').value=p.state||'';
-      document.getElementById('mImageUrls').value=p.imageUrls||'';
-    }catch(e){}
+    if(typeof id === 'string' && id.startsWith('L')){
+      const localProps = JSON.parse(localStorage.getItem('eng_local_props_'+currentUser.id)||'[]');
+      const p = localProps.find(x=>x.id===id);
+      if(p){
+        document.getElementById('mName').value=p.name||'';
+        document.getElementById('mDescription').value=p.description||'';
+        document.getElementById('mType').value=p.type||'RESIDENCIAL';
+        document.getElementById('mValue').value=p.value||'';
+        document.getElementById('mArea').value=p.area||'';
+        document.getElementById('mBedrooms').value=p.bedrooms||'';
+        document.getElementById('mAddress').value=p.address||'';
+        document.getElementById('mCity').value=p.city||'';
+        document.getElementById('mState').value=p.state||'';
+        document.getElementById('mImageUrls').value=parseImgs(p.imageUrls).join('||')||'';
+      }
+    }else{
+      try{
+        const r=await api(`/api/property/${id}`);
+        const p=await r.json();
+        document.getElementById('mName').value=p.name||'';
+        document.getElementById('mDescription').value=p.description||'';
+        document.getElementById('mType').value=p.type||'RESIDENCIAL';
+        document.getElementById('mValue').value=p.value||'';
+        document.getElementById('mArea').value=p.area||'';
+        document.getElementById('mBedrooms').value=p.bedrooms||'';
+        document.getElementById('mAddress').value=p.address||'';
+        document.getElementById('mCity').value=p.city||'';
+        document.getElementById('mState').value=p.state||'';
+        document.getElementById('mImageUrls').value=parseImgs(p.imageUrls).join(',')||'';
+      }catch(e){}
+    }
   }else{
     fields.forEach(f=>document.getElementById(f).value='');
     document.getElementById('mType').value='RESIDENCIAL';
@@ -1393,7 +1440,7 @@ async function saveProperty(){
 
   if(finalUrls.length===0){toast('Informe ao menos uma URL de imagem ou selecione um arquivo válido','error');return;}
 
-  const body={name,description,type,value,area,bedrooms,address,city,state,imageUrls: finalUrls.join(',')};
+  const body={name,description,type,value,area,bedrooms,address,city,state,imageUrls: finalUrls.join('||')};
   const btn=document.getElementById('modalSaveBtn');
   btn.disabled=true;btn.textContent='Salvando...';
   try{
